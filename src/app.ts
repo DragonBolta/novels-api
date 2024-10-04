@@ -1,12 +1,14 @@
 //app.ts
 import * as fs from "node:fs";
 import path from 'path';
-import express, { Request, Response } from 'express'; // Import Request and Response types
+import express, {Request, Response} from 'express'; // Import Request and Response types
 import cors from 'cors';
 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const novel_path = path.join(process.cwd(), 'Test_Novels')
 
 // Use CORS middleware
 app.use(cors({
@@ -17,10 +19,10 @@ app.use(cors({
 app.get('/api/novels', async (req: Request, res: Response) => {
     try {
         // Read the contents of the 'Test_Novels' directory
-        fs.readdir('./Test_Novels', { withFileTypes: true }, (err, files) => {
+        fs.readdir(novel_path, {withFileTypes: true}, (err, files) => {
             if (err) {
                 console.error(`Error reading directory: ${err.message}`);
-                return res.status(500).json({ error: 'Error reading directory' });
+                return res.status(500).json({error: 'Error reading directory'});
             }
 
             // Filter for directories only
@@ -33,16 +35,30 @@ app.get('/api/novels', async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error('Error listing folders:', error);
-        res.status(500).json({ error: 'Failed to retrieve folders' });
+        res.status(500).json({error: 'Failed to retrieve folders'});
     }
 });
 
+app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
+    const {novelName} = req.params;
+    const filePath = path.join(novel_path, novelName, novelName + ` Cover.png`); // Adjust the file extension as necessary
+
+    try {
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath);
+        }
+    } catch (error) {
+        console.error('Unexpected error:', error);
+        res.status(500).json({error: `Failed to send cover`});
+    }
+})
+
 // Route to read a specific chapter of a novel
 app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) => {
-    const { novelName, chapterNumber } = req.params;
+    const {novelName, chapterNumber} = req.params;
 
     // Construct the file path
-    const filePath = path.join(process.cwd(), 'Test_Novels', novelName, novelName + ` Chapter ${chapterNumber}.md`); // Adjust the file extension as necessary
+    const filePath = path.join(novel_path, novelName, novelName + ` Chapter ${chapterNumber}.md`); // Adjust the file extension as necessary
 
     try {
         // Read the file asynchronously
@@ -50,18 +66,18 @@ app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) =>
             if (err) {
                 // Handle file not found or read errors
                 if (err.code === 'ENOENT') {
-                    return res.status(404).json({ error: `${filePath} ` + 'Chapter not found' });
+                    return res.status(404).json({error: `${filePath} ` + 'Chapter not found'});
                 }
                 console.error(`Error reading file: ${err.message}`);
-                return res.status(500).json({ error: 'Error reading chapter' });
+                return res.status(500).json({error: 'Error reading chapter'});
             }
 
             // Send the chapter content as a response
-            res.json({ content: data });
+            res.json({content: data});
         });
     } catch (error) {
         console.error('Unexpected error:', error);
-        res.status(500).json({ error: `Failed to retrieve chapter` });
+        res.status(500).json({error: `Failed to retrieve chapter`});
     }
 });
 
