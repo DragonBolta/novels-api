@@ -40,18 +40,25 @@ app.get('/api/novels', async (req: Request, res: Response) => {
 });
 
 app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
-    const {novelName} = req.params;
-    const filePath = path.join(novel_path, novelName, novelName + ` Cover.png`); // Adjust the file extension as necessary
+    const { novelName } = req.params;
+    const filePath: string = path.join(novel_path, novelName, `Cover.png`); // Update file extension if necessary
 
     try {
+        // Check if the file exists
         if (fs.existsSync(filePath)) {
+            // Set the Content-Type header and send the image
+            res.setHeader('Content-Type', 'image/png'); // Adjust for the correct image type
             res.sendFile(filePath);
+        } else {
+            // Handle case when file is not found
+            res.status(404).json({ error: `Cover image for ${novelName} not found` });
         }
     } catch (error) {
         console.error('Unexpected error:', error);
-        res.status(500).json({error: `Failed to send cover`});
+        // Send a 500 error for unexpected issues
+        res.status(500).json({ error: 'Failed to send cover' });
     }
-})
+});
 
 // Route to read a specific chapter of a novel
 app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) => {
