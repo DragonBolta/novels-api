@@ -3,23 +3,25 @@ import * as fs from "node:fs";
 import path from 'path';
 import express, {Request, Response} from 'express'; // Import Request and Response types
 import cors from 'cors';
+import dotenv from 'dotenv';
 
+dotenv.config()
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const novel_path = path.join(process.cwd(), 'Test_Novels')
+const novel_path = path.resolve(process.env.NOVEL_PATH || "./../Test_Novels")
 
 // Use CORS middleware
 app.use(cors({
-    origin: 'http://localhost:5173', // Replace with your frontend URL
+    origin: [`${process.env.SITE_URL}:${process.env.SITE_PORT}`,'http://localhost:5173'], // Replace with your frontend URL
 }));
 
 // Route to list folders in a specific directory
 app.get('/api/novels', async (req: Request, res: Response) => {
     try {
-        // Read the contents of the 'Test_Novels' directory
-        fs.readdir(novel_path, {withFileTypes: true}, (err, files) => {
+        // Read the contents of the novel directory
+        fs.readdir(path.normalize(novel_path), {withFileTypes: true}, (err, files) => {
             if (err) {
                 console.error(`Error reading directory: ${err.message}`);
                 return res.status(500).json({error: 'Error reading directory'});
@@ -40,7 +42,7 @@ app.get('/api/novels', async (req: Request, res: Response) => {
 });
 
 app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
-    const { novelName } = req.params;
+    const {novelName} = req.params;
     const filePath: string = path.join(novel_path, novelName, `Cover.png`); // Update file extension if necessary
 
     try {
@@ -51,12 +53,12 @@ app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
             res.sendFile(filePath);
         } else {
             // Handle case when file is not found
-            res.status(404).json({ error: `Cover image for ${novelName} not found` });
+            res.status(404).json({error: `Cover image for ${novelName} not found`});
         }
     } catch (error) {
         console.error('Unexpected error:', error);
         // Send a 500 error for unexpected issues
-        res.status(500).json({ error: 'Failed to send cover' });
+        res.status(500).json({error: 'Failed to send cover'});
     }
 });
 
@@ -65,7 +67,7 @@ app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) =>
     const {novelName, chapterNumber} = req.params;
 
     // Construct the file path
-    const filePath = path.join(novel_path, novelName, novelName + ` Chapter ${chapterNumber}.md`); // Adjust the file extension as necessary
+    const filePath = path.join(novel_path, novelName, "Markdown", novelName + ` Chapter ${chapterNumber}.md`); // Adjust the file extension as necessary
 
     try {
         // Read the file asynchronously
