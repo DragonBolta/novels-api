@@ -100,6 +100,31 @@ app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) =>
     }
 });
 
+// Route to get info of a novel
+app.get('/api/:novelName/', async (req: Request, res: Response) => {
+    const {novelName} = req.params;
+    try {
+        // Connect to the MongoDB client
+        await client.connect();
+
+        // Access the specified database and collection
+        const database = client.db(dbName);
+        const collection = database.collection(collectionName);
+
+        // Find all documents in the collection
+        const novels = await collection.find({"title_english": novelName}).toArray();
+
+        // Respond with the array of novels
+        res.json(novels);
+    } catch (error) {
+        console.error('Error fetching novels:', error);
+        res.status(500).json({ error: 'Failed to retrieve novels' });
+    } finally {
+        // Ensure the client is closed when done
+        await client.close();
+    }
+});
+
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
