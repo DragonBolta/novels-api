@@ -51,6 +51,33 @@ app.get('/api/novels', async (req: Request, res: Response) => {
     }
 });
 
+// Route to get a random novel
+app.get('/api/random/', async (req: Request, res: Response) => {
+    try {
+        // Connect to the MongoDB client
+        await client.connect();
+
+        // Access the database and collection
+        const database = client.db(dbName);
+        const collection = database.collection(collectionName);
+
+        // Use aggregation with $sample to retrieve one random document
+        const randomDocument = await collection.aggregate([{ $sample: { size: 1 } }]).toArray();
+
+        if (randomDocument.length > 0) {
+            res.json(randomDocument[0]); // Return the random document
+        } else {
+            res.status(404).json({ message: 'No novels found' }); // Handle case where no document is found
+        }
+    } catch (error) {
+        console.error('Error fetching random document:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+    finally {
+        await client.close();
+    }
+});
+
 app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
     const {novelName} = req.params;
     const filePath: string = path.join(novel_path, novelName, `Cover.png`); // Update file extension if necessary
