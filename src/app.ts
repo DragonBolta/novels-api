@@ -4,6 +4,7 @@ import path from 'path';
 import express, {Request, Response} from 'express'; // Import Request and Response types
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { MongoClient } from 'mongodb';
 
 dotenv.config()
 
@@ -17,27 +18,36 @@ app.use(cors({
     origin: [`${process.env.SITE_URL}:${process.env.SITE_PORT}`,'http://localhost:5173'], // Replace with your frontend URL
 }));
 
-// Route to list folders in a specific directory
+// MongoDB connection URI and database/collection names
+const uri = process.env.DB_URL || 'mongodb://localhost:27017'; // Replace with your MongoDB connection string
+const dbName = process.env.DB_NAME || ''; // Replace with your database name
+const collectionName = process.env.COLLECTION_NAME || ''; // Replace with your collection name
+
+// Create a MongoClient instance
+const client = new MongoClient(uri);
+
+
+// Route to list documents in novel collection
 app.get('/api/novels', async (req: Request, res: Response) => {
     try {
-        // Read the contents of the novel directory
-        fs.readdir(path.normalize(novel_path), {withFileTypes: true}, (err, files) => {
-            if (err) {
-                console.error(`Error reading directory: ${err.message}`);
-                return res.status(500).json({error: 'Error reading directory'});
-            }
+        // Connect to the MongoDB client
+        await client.connect();
 
-            // Filter for directories only
-            const folders = files
-                .filter(file => file.isDirectory()) // Only keep directories
-                .map(file => file.name); // Get the name of the directory
+        // Access the specified database and collection
+        const database = client.db(dbName);
+        const collection = database.collection(collectionName);
 
-            // Respond with the list of folder names
-            res.json(folders);
-        });
+        // Find all documents in the collection
+        const novels = await collection.find({}).toArray();
+
+        // Respond with the array of novels
+        res.json(novels);
     } catch (error) {
-        console.error('Error listing folders:', error);
-        res.status(500).json({error: 'Failed to retrieve folders'});
+        console.error('Error fetching novels:', error);
+        res.status(500).json({ error: 'Failed to retrieve novels' });
+    } finally {
+        // Ensure the client is closed when done
+        await client.close();
     }
 });
 
