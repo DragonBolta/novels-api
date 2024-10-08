@@ -4,7 +4,8 @@ import path from 'path';
 import express, {Request, Response} from 'express'; // Import Request and Response types
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { MongoClient } from 'mongodb';
+import {MongoClient} from 'mongodb';
+import {Filter} from 'mongodb';
 
 dotenv.config()
 
@@ -15,7 +16,7 @@ const novel_path = path.resolve(process.env.NOVEL_PATH || "./../Test_Novels")
 
 // Use CORS middleware
 app.use(cors({
-    origin: [`${process.env.SITE_URL}:${process.env.SITE_PORT}`,'http://localhost:5173'], // Replace with your frontend URL
+    origin: [`${process.env.SITE_URL}:${process.env.SITE_PORT}`, 'http://localhost:5173'], // Replace with your frontend URL
 }));
 
 // MongoDB connection URI and database/collection names
@@ -44,7 +45,7 @@ app.get('/api/novels', async (req: Request, res: Response) => {
         res.json(novels);
     } catch (error) {
         console.error('Error fetching novels:', error);
-        res.status(500).json({ error: 'Failed to retrieve novels' });
+        res.status(500).json({error: 'Failed to retrieve novels'});
     } finally {
         // Ensure the client is closed when done
         await client.close();
@@ -62,18 +63,110 @@ app.get('/api/random/', async (req: Request, res: Response) => {
         const collection = database.collection(collectionName);
 
         // Use aggregation with $sample to retrieve one random document
-        const randomDocument = await collection.aggregate([{ $sample: { size: 1 } }]).toArray();
+        const randomDocument = await collection.aggregate([{$sample: {size: 1}}]).toArray();
 
         if (randomDocument.length > 0) {
             res.json(randomDocument[0]); // Return the random document
         } else {
-            res.status(404).json({ message: 'No novels found' }); // Handle case where no document is found
+            res.status(404).json({message: 'No novels found'}); // Handle case where no document is found
         }
     } catch (error) {
         console.error('Error fetching random document:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({error: 'Internal Server Error'});
+    } finally {
+        await client.close();
     }
-    finally {
+});
+
+// Route to search for a novel with filters
+app.get('/api/query', async (req: Request, res: Response) => {
+    const raw_query = req.query
+
+    // Define the filter object with $and initialized
+    let filter: Filter<any> = {
+        $and: [] // Ensure this is initialized as an array
+    };
+
+    if (Array.isArray(filter.$and)) {
+        if (raw_query.likes) {
+            filter.$and.push({likes: {$gte: parseInt(raw_query.likes as string, 10)}});
+        }
+
+        if (raw_query.rating) {
+            filter.$and.push({rating: {$gte: parseFloat(raw_query.rating as string)}});
+        }
+
+        // Ensure multiple tags for inclusion are handled correctly using regex for case-insensitivity
+        if (raw_query.tags) {
+            let tagsArray =
+                Array.isArray(raw_query.tags)
+                    ? raw_query.tags.map(tag => tag as string)
+                    : raw_query.tags
+                        ? [raw_query.tags as string]
+                        : [];
+
+            // Create an array of regex filters for case-insensitive matching
+            const regexFilters = tagsArray.map(tag => ({
+                tags: { $regex: new RegExp(`^${tag}$`, 'i') } // Matches the exact tag, case-insensitive
+            }));
+
+            // Use $and to combine all regex conditions
+            filter.$and.push({ $and: regexFilters });
+        }
+
+        // Handle multiple tags for exclusion using $nin with regex
+        if (raw_query.tags_exclude) {
+            let tagsExcludeArray: string[]=
+                Array.isArray(raw_query.tags_exclude)
+                    ? raw_query.tags_exclude.map(tag => tag as string)
+                    : raw_query.tags_exclude
+                        ? [raw_query.tags_exclude as string]
+                        : [];
+
+            // Create an array of regex filters for exclusion
+            const regexExcludeFilters = tagsExcludeArray.map(tag => ({
+                tags: { $not: { $regex: new RegExp(`^${tag}$`, 'i') } } // Excludes exact matches, case-insensitive
+            }));
+
+            // Use $or to combine all exclusion conditions
+            filter.$and.push({ $or: regexExcludeFilters });
+        }
+
+        // Add remaining string-based filters for all other query parameters
+        Object.keys(raw_query).forEach((key) => {
+            if (key !== 'likes' && key !== 'rating' && key !== 'tags' && key !== 'tags_exclude') {
+                const value = raw_query[key];
+                if (typeof value === 'string') {
+                    // Use regex for partial matching (case-insensitive)
+                    // @ts-ignore
+                    filter.$and.push({ [key]: { $regex: value, $options: 'i' } });
+                }
+            }
+        });
+        console.log(filter["$and"][0]["$and"]);
+
+        // If no conditions are added to the $and array, handle accordingly
+        if (filter.$and.length === 0) {
+            // Optionally, you could set the filter to an empty object or handle it based on your needs
+            filter = {}; // This would match all documents
+        }
+    }
+    try {
+        // Connect to the MongoDB client
+        await client.connect();
+
+        // Access the database and collection
+        const database = client.db(dbName);
+        const collection = database.collection(collectionName);
+
+        // Perform the search with the constructed filter and sort by `likes` in descending order
+        const search_results = await collection.find(filter).sort({ likes: -1 }).toArray();
+
+        res.json(search_results); // Return the random document
+    } catch (error) {
+        console.error('Error fetching random document:', error);
+        res.status(500).json({error: 'Internal Server Error'});
+    } finally {
         await client.close();
     }
 });
@@ -145,7 +238,7 @@ app.get('/api/:novelName/', async (req: Request, res: Response) => {
         res.json(novels);
     } catch (error) {
         console.error('Error fetching novels:', error);
-        res.status(500).json({ error: 'Failed to retrieve novels' });
+        res.status(500).json({error: 'Failed to retrieve novels'});
     } finally {
         // Ensure the client is closed when done
         await client.close();
