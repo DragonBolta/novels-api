@@ -200,6 +200,57 @@ app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
     }
 });
 
+// Route to get the chapter list of a novel
+app.get('/api/:novelName/chapterlist', async (req: Request, res: Response) => {
+    const { novelName } = req.params;
+
+    // Construct the file path
+    const filePath = path.join(novel_path, novelName, "Markdown");
+
+    try {
+        // Check if the directory exists
+        fs.access(filePath, fs.constants.F_OK, (err) => {
+            if (err) {
+                // Handle directory not found
+                return res.status(404).json({ error: 'Chapters not found' });
+            }
+
+            // Read the directory asynchronously
+            fs.readdir(filePath, (err, files) => {
+                if (err) {
+                    console.error(`Error reading directory: ${err.message}`);
+                    return res.status(500).json({ error: 'Error reading chapter list' });
+                }
+
+                // Filter for .md files and remove extensions
+                const chapters = files
+                    .filter(file => file.endsWith('.md')) // Keep only .md files
+                    .map(file => {
+                        // Remove the novel title part from the chapter name
+                        const chapterName = path.basename(file, '.md');
+                        // Extract just the chapter number or relevant part
+                        const match = chapterName.match(/Chapter\s+(\d+)/i);
+                        return match ? `Chapter ${match[1]}` : chapterName; // Adjust as necessary
+                    });
+
+                // Sort chapters numerically
+                const sortedChapters = chapters.sort((a, b) => {
+                    const numA = parseInt(a.match(/\d+/)?.[0] || "0", 10); // Extract the number from chapter name
+                    const numB = parseInt(b.match(/\d+/)?.[0] || "0", 10); // Extract the number from chapter name
+                    return numA - numB; // Sort numerically
+                });
+
+                // Send the sorted chapter list as a response
+                res.json({ chapters: sortedChapters });
+            });
+        });
+    } catch (error) {
+        console.error('Unexpected error:', error);
+        res.status(500).json({ error: `Failed to retrieve chapter list` });
+    }
+});
+
+
 // Route to read a specific chapter of a novel
 app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) => {
     const {novelName, chapterNumber} = req.params;
