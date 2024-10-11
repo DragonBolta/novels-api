@@ -29,23 +29,23 @@ const client = new MongoClient(uri);
 
 
 // Route to list documents in novel collection
-app.get('/api/novels', async (req: Request, res: Response) => {
-    try {
-
-        // Access the specified database and collection
-        const database = client.db(dbName);
-        const collection = database.collection(collectionName);
-
-        // Find all documents in the collection
-        const novels = await collection.find({}).toArray();
-
-        // Respond with the array of novels
-        res.json(novels);
-    } catch (error) {
-        console.error('Error fetching novels:', error);
-        res.status(500).json({error: 'Failed to retrieve novels'});
-    }
-});
+// app.get('/api/novels', async (req: Request, res: Response) => {
+//     try {
+//
+//         // Access the specified database and collection
+//         const database = client.db(dbName);
+//         const collection = database.collection(collectionName);
+//
+//         // Find all documents in the collection
+//         const novels = await collection.find({}).toArray();
+//
+//         // Respond with the array of novels
+//         res.json(novels);
+//     } catch (error) {
+//         console.error('Error fetching novels:', error);
+//         res.status(500).json({error: 'Failed to retrieve novels'});
+//     }
+// });
 
 // Route to get a random novel
 app.get('/api/random', async (req: Request, res: Response) => {
@@ -105,6 +105,13 @@ app.get('/api/query', async (req: Request, res: Response) => {
             filter.$and.push({ $and: regexFilters });
         }
 
+        if (!raw_query.nsfw) {
+            // Exclude the "Adult" tag, case-insensitive
+            filter.$and.push({
+                tags: { $not: { $regex: new RegExp('^Adult$', 'i') } } // Excludes the exact "Adult" tag
+            });
+        }
+
         // Handle multiple tags for exclusion using $nin with regex
         if (raw_query.tags_exclude) {
             let tagsExcludeArray: string[]=
@@ -148,7 +155,7 @@ app.get('/api/query', async (req: Request, res: Response) => {
         const collection = database.collection(collectionName);
 
         // Perform the search with the constructed filter and sort by `likes` in descending order
-        const search_results = await collection.find(filter).sort({ likes: -1 }).toArray();
+        const search_results = await collection.find(filter).sort({ likes: -1 }).limit(100).toArray();
 
         res.json(search_results); // Return the random document
     } catch (error) {
@@ -179,6 +186,7 @@ app.get('/api/:novelName', async (req: Request, res: Response) => {
     }
 });
 
+// Route to get cover of a novel
 app.get('/api/:novelName/cover', async (req: Request, res: Response) => {
     const {novelName} = req.params;
     const filePath: string = path.join(novel_path, novelName, `Cover.png`); // Update file extension if necessary
@@ -249,7 +257,6 @@ app.get('/api/:novelName/chapterlist', async (req: Request, res: Response) => {
         res.status(500).json({ error: `Failed to retrieve chapter list` });
     }
 });
-
 
 // Route to read a specific chapter of a novel
 app.get('/api/:novelName/:chapterNumber', async (req: Request, res: Response) => {
