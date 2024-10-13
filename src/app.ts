@@ -155,7 +155,51 @@ app.get('/api/query', async (req: Request, res: Response) => {
         const collection = database.collection(collectionName);
 
         // Perform the search with the constructed filter and sort by `likes` in descending order
-        const search_results = await collection.find(filter).sort({ likes: -1 }).limit(100).toArray();
+        const search_results = await collection.aggregate([
+            { $match: filter }, // Match with the constructed filter
+            {
+                $addFields: {
+                    titleExactMatch: {
+                        $cond: {
+                            if: {
+                                $regexMatch: {
+                                    input: "$title_english",
+                                    regex: `^${raw_query.title_english}$`, // Exact match with regex
+                                    options: "i" // Case-insensitive
+                                }
+                            },
+                            then: 1, // Exact matches get priority 1
+                            else: 0  // Non-exact matches get priority 0
+                        }
+                    },
+                    titleWholeWordMatch: {
+                        $cond: {
+                            if: {
+                                $regexMatch: {
+                                    input: "$title_english",
+                                    regex: `\\b${raw_query.title_english}\\b`, // Whole word match with regex
+                                    options: "i" // Case-insensitive
+                                }
+                            },
+                            then: 1, // Whole word matches get priority 1
+                            else: 0  // Non-whole word matches get priority 0
+                        }
+                    },
+                    titleLength: { $strLenCP: "$title_english" } // Get the length of the title
+                }
+            },
+            {
+                $sort: {
+                    titleExactMatch: -1,
+                    likes: -1,
+                    titleWholeWordMatch: -1,
+                    titleLength: 1
+                }
+            },
+            {
+                $limit: 100 // Limit results
+            }
+        ]).toArray();
 
         res.json(search_results); // Return the random document
     } catch (error) {
