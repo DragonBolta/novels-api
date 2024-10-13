@@ -166,23 +166,53 @@ app.get('/api/query', async (req: Request, res: Response) => {
 
 // Route to get info of a novel
 app.get('/api/:novelName', async (req: Request, res: Response) => {
-    const {novelName} = req.params;
+    const { novelName } = req.params;
     try {
-
         // Access the specified database and collection
         const database = client.db(dbName);
         const collection = database.collection(collectionName);
 
-        // Find all documents in the collection with case-insensitive title match
-        const novels = await collection.find({
-            "title_english": { $regex: novelName, $options: "i" }
-        }).toArray();
+        // Use aggregation to apply prioritization
+        const novels = await collection.aggregate([
+            {
+                // Match titles using case-insensitive regex
+                $match: {
+                    "title_english": { $regex: novelName, $options: "i" }
+                }
+            },
+            {
+                // Add fields to prioritize exact matches and calculate title length
+                $addFields: {
+                    titleExactMatch: {
+                        $cond: {
+                            if: {
+                                $regexMatch: {
+                                    input: "$title_english",
+                                    regex: `^${novelName}$`,  // Exact match with regex
+                                    options: "i"  // Case-insensitive
+                                }
+                            },
+                            then: 1,  // Exact matches get priority 1
+                            else: 0   // Non-exact matches get priority 0
+                        }
+                    },
+                    titleLength: { $strLenCP: "$title_english" } // Get the length of the title
+                }
+            },
+            {
+                // Sort by exact match, then by title length (shorter first), then by other criteria (e.g., likes)
+                $sort: {
+                    titleExactMatch: -1,  // Prioritize exact matches
+                    titleLength: 1       // Then prioritize shorter titles
+                }
+            }
+        ]).toArray();
 
         // Respond with the array of novels
         res.json(novels);
     } catch (error) {
         console.error('Error fetching novels:', error);
-        res.status(500).json({error: 'Failed to retrieve novels'});
+        res.status(500).json({ error: 'Failed to retrieve novels' });
     }
 });
 
