@@ -12,11 +12,14 @@ dotenv.config()
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const novel_path = path.resolve(process.env.NOVEL_PATH || "./../Test_Novels")
+const novel_path = process.env.NOVEL_PATH
+    ? path.resolve(process.env.NOVEL_PATH)
+    : path.resolve(__dirname, './../Test_Novels'); // Ensure fallback is correct
+console.log('Resolved path:', novel_path);
 
 // Use CORS middleware
 app.use(cors({
-    origin: [`${process.env.SITE_URL}:${process.env.SITE_PORT}`, 'http://localhost:5173'], // Replace with your frontend URL
+    origin: [`${process.env.SITE_URL}`, 'http://localhost:5173', 'http://localhost:4173'], // Replace with your frontend URL
 }));
 
 // MongoDB connection URI and database/collection names
@@ -71,7 +74,11 @@ app.get('/api/random', async (req: Request, res: Response) => {
 
 // Route to search for a novel with filters
 app.get('/api/query', async (req: Request, res: Response) => {
-    const raw_query = req.query
+    const raw_query = req.query;
+
+    const page = typeof raw_query.page === "string" ? parseInt(raw_query.page) : 1; // Current page number, default to 1
+    const pageSize = typeof raw_query.pageSize === "string" ? parseInt(raw_query.pageSize) : 100; // Number of items per page, default to 10
+    const skip = (page - 1) * pageSize; // Calculate skip value
 
     // Define the filter object with $and initialized
     let filter: Filter<any> = {
@@ -105,7 +112,7 @@ app.get('/api/query', async (req: Request, res: Response) => {
             filter.$and.push({ $and: regexFilters });
         }
 
-        if (!raw_query.nsfw) {
+        if (raw_query.nsfw !== "true") {
             // Exclude the "Adult" tag, case-insensitive
             filter.$and.push({
                 tags: { $not: { $regex: new RegExp('^Adult$', 'i') } } // Excludes the exact "Adult" tag
@@ -132,7 +139,7 @@ app.get('/api/query', async (req: Request, res: Response) => {
 
         // Add remaining string-based filters for all other query parameters
         Object.keys(raw_query).forEach((key) => {
-            if (key !== 'likes' && key !== 'rating' && key !== 'tags' && key !== 'tags_exclude') {
+            if (key !== 'likes' && key !== 'rating' && key !== 'tags' && key !== 'tags_exclude' && key !== 'nsfw' && key != 'page' && key != 'pageSize') {
                 const value = raw_query[key];
                 if (typeof value === 'string') {
                     // Use regex for partial matching (case-insensitive)
@@ -145,7 +152,7 @@ app.get('/api/query', async (req: Request, res: Response) => {
         // If no conditions are added to the $and array, handle accordingly
         if (filter.$and.length === 0) {
             // Optionally, you could set the filter to an empty object or handle it based on your needs
-            filter = {}; // This would match all documents
+            filter.$and.push({likes: {$gte: 0}});
         }
     }
     try {
@@ -197,11 +204,21 @@ app.get('/api/query', async (req: Request, res: Response) => {
                 }
             },
             {
-                $limit: 100 // Limit results
+                $skip: skip
+            },
+            {
+                $limit: pageSize // Limit results
             }
         ]).toArray();
 
-        res.json(search_results); // Return the random document
+        const totalCount = await collection.countDocuments(filter); // Get total count for pagination
+
+        res.json({
+            search_results,
+            totalCount,
+            currentPage: page,
+            totalPages: Math.ceil(totalCount / pageSize),
+        });
     } catch (error) {
         console.error('Error fetching random document:', error);
         res.status(500).json({error: 'Internal Server Error'});
@@ -217,7 +234,7 @@ app.get('/api/:novelName', async (req: Request, res: Response) => {
         const collection = database.collection(collectionName);
 
         // Use aggregation to apply prioritization
-        const novels = await collection.aggregate([
+        const novel = await collection.aggregate([
             {
                 // Match titles using case-insensitive regex
                 $match: {
@@ -249,11 +266,13 @@ app.get('/api/:novelName', async (req: Request, res: Response) => {
                     titleExactMatch: -1,  // Prioritize exact matches
                     titleLength: 1       // Then prioritize shorter titles
                 }
+            },
+            {
+                $limit: 1 // Limit results
             }
         ]).toArray();
 
-        // Respond with the array of novels
-        res.json(novels);
+        res.json(novel);
     } catch (error) {
         console.error('Error fetching novels:', error);
         res.status(500).json({ error: 'Failed to retrieve novels' });
