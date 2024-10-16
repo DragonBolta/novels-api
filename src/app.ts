@@ -77,7 +77,11 @@ app.get('/api/query', async (req: Request, res: Response) => {
     const raw_query = req.query;
 
     const page = typeof raw_query.page === "string" ? parseInt(raw_query.page) : 1; // Current page number, default to 1
-    const pageSize = typeof raw_query.pageSize === "string" ? parseInt(raw_query.pageSize) : 100; // Number of items per page, default to 10
+    const pageSize = typeof raw_query.pageSize !== "string"
+                                ? 100
+                                : parseInt(raw_query.pageSize) <= 100
+                                    ? parseInt(raw_query.pageSize)
+                                    : 100; // Number of items per page, default to 10
     const skip = (page - 1) * pageSize; // Calculate skip value
 
     // Define the filter object with $and initialized
