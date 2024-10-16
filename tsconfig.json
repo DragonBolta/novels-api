@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES6",
-    "module": "commonjs",
+    "module": "ESNext",
+    "moduleResolution": "node", // Use Node.js module resolution
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true
