@@ -1,9 +1,11 @@
 import express, {NextFunction, Request, Response} from "express";
 import {client} from "./db";
 import dotenv from "dotenv";
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import {ObjectId} from "mongodb";
+import {body, param, query, validationResult} from "express-validator";
+import createDOMPurify from 'dompurify';
+import { JSDOM } from "jsdom";
 
 const dbName = process.env.DB_NAME || '';
 
@@ -11,8 +13,24 @@ dotenv.config()
 
 const commentsRouter = express.Router();
 
-commentsRouter.post('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { username, comment, novelId, chapterNum } = req.body;
+const window = new JSDOM('').window;
+const DOMPurify = createDOMPurify(window);
+
+commentsRouter.post('/',
+    [
+        body('username').custom((value: any) => typeof value === 'string').trim().notEmpty().withMessage('Username is required'),
+        body('comment').custom((value: any) => typeof value === 'string').trim().notEmpty().withMessage('Comment is required'),
+        body('novelId').custom((value: any) => typeof value === 'string').notEmpty().withMessage('Novel ID is required'),
+        body('chapterNumber').isInt().withMessage('Chapter number must be an integer'),
+    ], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        res.status(400).json({ errors: errors.array() });
+        return;
+    }
+
+    const { username, comment, novelId, chapterNumber } = req.body;
     const authHeader = req.headers['authorization'];
 
     if (!authHeader) {
@@ -40,11 +58,14 @@ commentsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
             throw new Error("Access token does not belong to this user");
         }
 
+        const sanitizedComment = DOMPurify.sanitize(comment);
+
         const commentInfo = {
             username: username,
-            comment: comment,
+            comment: sanitizedComment,
             novelId: novelId,
-            chapterNum: chapterNum,
+            chapterNumber: chapterNumber,
+            timestamp: new Date()
         }
 
         await client.connect();
@@ -60,13 +81,20 @@ commentsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
     }
 })
 
-commentsRouter.delete('/:commentId', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+commentsRouter.delete('/:commentId',
+    [
+        param('commentId').custom((value: any) => typeof value === "string").trim().notEmpty().withMessage('commentId is required')
+    ], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { commentId } = req.params;
 
     const authHeader = req.headers['authorization'];
 
     if (!authHeader) {
         res.status(401).json({message: 'Token is invalid or expired.'});
+        return;
+    }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ message: 'Invalid token format.' });
         return;
     }
     const access_token = authHeader.split(' ')[1]; // Assuming the format is "Bearer token"
@@ -84,6 +112,10 @@ commentsRouter.delete('/:commentId', async (req: Request, res: Response, next: N
         await client.connect();
         const database = client.db(dbName);
         const commentsCollection = database.collection('Comments');
+        if (!ObjectId.isValid(commentId)) {
+            res.status(400).json({ message: 'Invalid comment ID format' });
+            return
+        }
         const targetComment = await commentsCollection.findOne({_id: new ObjectId(commentId)});
 
         if (!targetComment) {
@@ -100,9 +132,13 @@ commentsRouter.delete('/:commentId', async (req: Request, res: Response, next: N
             throw new Error("Comment was not created by this user");
         }
 
-        await commentsCollection.deleteOne({_id: new ObjectId(commentId)});
-        res.status(204);
+        if (!ObjectId.isValid(commentId)) {
+            res.status(400).json({ message: 'Invalid comment ID format' });
+            return
+        }
 
+        await commentsCollection.deleteOne({_id: new ObjectId(commentId)});
+        res.status(204).json({ message: 'Successful deletion' });
     } catch (err) {
         console.error('Error during comment deletion:', err);
         res.status(404).json({ message: 'Comment does not exist.' });
@@ -111,14 +147,14 @@ commentsRouter.delete('/:commentId', async (req: Request, res: Response, next: N
 
 
 
-commentsRouter.get('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+commentsRouter.get('/',
+    [
+        query('novelId').custom((value: any) => typeof value === "string").trim().notEmpty().withMessage('novelId is required'),
+        query('chapterNumber').custom((value: any) => typeof value === "string").trim().notEmpty().withMessage('chapterId is required')
+    ], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const raw_query = req.query;
-    if (!raw_query.novelId) {
-        console.error('Error during comment retrieval:', err);
-        res.status(404).json({ message: 'Novel does not exist.' });
-    }
     const novelId = raw_query.novelId;
-    const chapterId = raw_query.chapterId ? raw_query.chapterId : "-1";
+    const chapterNumber = raw_query.chapterNumber ? raw_query.chapterNumber : "-1";
 
     try {
 
@@ -133,9 +169,7 @@ commentsRouter.get('/', async (req: Request, res: Response, next: NextFunction):
         await client.connect();
         const database = client.db(dbName);
         const commentsCollection = database.collection('Comments');
-        const comments = await commentsCollection.find({novelId: novelId, chapterId: chapterId}).toArray();
-        console.log(novelId);
-
+        const comments = await commentsCollection.find({novelId: novelId, chapterNumber: chapterNumber}).toArray();
         res.status(200).json({ message: 'Comments retrieved successfully', comments: comments});
 
     } catch (err) {
