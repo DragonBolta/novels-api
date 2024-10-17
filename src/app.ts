@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import novelRouter from "./novelsRouter";
 import {connectToDatabase} from "./db";
 import authRouter from "./auth";
+import commentsRouter from "./comments";
 
 dotenv.config()
 
@@ -27,6 +28,8 @@ app.use(express.json())
 app.use('/', novelRouter);
 
 app.use('/auth', authRouter);
+
+app.use('/comments', commentsRouter);
 
 // Start the server
 app.listen(PORT, async () => {

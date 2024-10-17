@@ -42,6 +42,13 @@ authRouter.post('/register', async (req: Request, res: Response, next: NextFunct
             return;
         }
 
+        // Check if user already exists
+        const usernameTaken = await usersCollection.findOne({"username": username });
+        if (usernameTaken) {
+            res.status(400).json({ message: 'Username is taken' });
+            return;
+        }
+
         // Create new user
         const newUser = { username, email, password };
 
