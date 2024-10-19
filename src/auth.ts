@@ -1,5 +1,5 @@
 import express, {NextFunction, Request, Response} from "express";
-import {client} from "./db";
+import {client} from "./db.js";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -123,7 +123,7 @@ authRouter.post('/login', async (req, res, next: NextFunction): Promise<void> =>
         });
 
         // Send the token in the response
-        res.json({ message: 'Login successful!', token , refreshToken});
+        res.json({ message: 'Login successful!', token , refreshToken, username: user.username});
         return;
 
     } catch (err) {
@@ -169,7 +169,11 @@ authRouter.post('/refreshToken', async (req: Request, res: Response, next: NextF
         res.status(200).json({ accessToken: newAccessToken });
     } catch (err) {
         console.error('Error during token refresh:', err);
-        res.status(401).json({ message: 'Token is invalid or expired.' });
+        if (err instanceof jwt.TokenExpiredError) {
+            res.status(401).json({ message: 'Token has expired.' });
+        } else {
+            res.status(401).json({ message: 'Token is invalid.' });
+        }
     }
 });
 

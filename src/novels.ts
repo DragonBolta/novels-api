@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import path from 'path';
 import express, {Request, Response} from 'express'; // Import Request and Response types
-import {client} from './db';
+import {client} from './db.js';
 import {Filter} from 'mongodb';
 import {fileURLToPath} from "node:url";
 import dotenv from "dotenv";

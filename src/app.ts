@@ -3,10 +3,10 @@ import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import novelRouter from "./novelsRouter";
-import {connectToDatabase} from "./db";
-import authRouter from "./auth";
-import commentsRouter from "./comments";
+import novelRouter from "./novels.js";
+import {connectToDatabase} from "./db.js";
+import authRouter from "./auth.js";
+import commentsRouter from "./comments.js";
 
 dotenv.config()
 

@@ -1,5 +1,5 @@
 import express, {NextFunction, Request, Response} from "express";
-import {client} from "./db";
+import {client} from "./db.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import {ObjectId} from "mongodb";
@@ -145,7 +145,78 @@ commentsRouter.delete('/:commentId',
     }
 })
 
+commentsRouter.put('/:commentId',
+    [
+        param('commentId').custom((value: any) => typeof value === "string").custom((value: any) => ObjectId.isValid(value)).trim().notEmpty().withMessage('commentId is required'),
+        body('comment').custom((value: any) => typeof value === 'string').trim().notEmpty().withMessage('Comment is required'),
+    ], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        const { commentId } = req.params;
 
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            res.status(400).json({ errors: errors.array() });
+            return;
+        }
+
+        const { comment } = req.body;
+
+        const authHeader = req.headers['authorization'];
+
+        if (!authHeader) {
+            res.status(401).json({message: 'Token is invalid or expired.'});
+            return;
+        }
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            res.status(401).json({ message: 'Invalid token format.' });
+            return;
+        }
+        const access_token = authHeader.split(' ')[1]; // Assuming the format is "Bearer token"
+
+        try {
+
+            if (!process.env.JWT_TOKEN_SECRET) {
+                throw new Error("JWT_TOKEN_SECRET is not defined");
+            }
+
+            if (!process.env.JWT_TOKEN_EXPIRATION) {
+                throw new Error("JWT_TOKEN_EXPIRATION is not defined");
+            }
+
+            await client.connect();
+            const database = client.db(dbName);
+            const commentsCollection = database.collection('Comments');
+            const targetComment = await commentsCollection.findOne({_id: new ObjectId(commentId)});
+
+            if (!targetComment) {
+                throw new Error("Comment does not exist");
+            }
+
+            const payload = jwt.verify(
+                access_token,
+                process.env.JWT_TOKEN_SECRET,
+                { maxAge: parseInt(process.env.JWT_TOKEN_EXPIRATION) }
+            ) as jwt.JwtPayload;
+
+            if (payload.username !== targetComment['username']) {
+                res.status(401).json({ message: 'Comment was not created by this user.' });
+                return;
+            }
+
+            await commentsCollection.updateOne({_id: new ObjectId(commentId)}, {$set: {comment: comment}});
+            res.status(204).json({ message: 'Successful edit' });
+        } catch (err) {
+            console.error('Error during comment edit:', err);
+
+            if (err instanceof jwt.JsonWebTokenError) {
+                res.status(401).json({ message: 'Invalid or expired token.' });
+            } else if (err instanceof jwt.TokenExpiredError) {
+                res.status(401).json({ message: 'Token has expired.' });
+            } else {
+                // Handle other errors
+                res.status(404).json({ message: 'Comment does not exist.' });
+            }
+        }
+    })
 
 commentsRouter.get('/',
     [

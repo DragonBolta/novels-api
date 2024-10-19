@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "node", // Use Node.js module resolution
     "outDir": "./dist",
+    "baseUrl": ".",
     "strict": true,
     "esModuleInterop": true
   },
